@@ -2,9 +2,9 @@ from flask import Flask, request, jsonify
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium_stealth import stealth
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
+from selenium_stealth import stealth
+import os
 import time
 import logging
 
@@ -13,17 +13,23 @@ logging.basicConfig(level=logging.INFO)
 
 def setup_driver():
     chrome_options = Options()
+    
+    # Essential options for Render
+    chrome_options.binary_location = "/opt/render/project/.render/chrome/opt/google/chrome/google-chrome"
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36")
-
+    
+    # Browser mimic settings
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
+    chrome_options.add_argument(f"user-agent={user_agent}")
+    
     try:
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
+        service = Service(executable_path="/opt/render/project/.render/chromedriver/linux64/114.0.5735.90/chromedriver")
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
         stealth(driver,
                 languages=["en-US", "en"],
                 vendor="Google Inc.",
@@ -47,7 +53,7 @@ def decode_vin():
         driver = setup_driver()
         url = f"https://www.vindecoderz.com/EN/check-lookup/{vin}"
         driver.get(url)
-        time.sleep(5)  # Wait for page load
+        time.sleep(5)  # Wait for Cloudflare
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         table = soup.find('table', {'class': 'table table-striped table-hover'})
