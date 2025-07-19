@@ -4,4 +4,3 @@ selenium==4.10.0
 selenium-stealth==1.0.6
 beautifulsoup4==4.12.2
 gunicorn==20.1.0
-webdriver-manager==3.8.6
