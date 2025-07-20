@@ -2,24 +2,8 @@ services:
   - type: web
     name: vin-decoder
     env: python
-    plan: starter  # Required for Chrome
-    buildCommand: |
-      pip install -r requirements.txt
-      apt-get update
-      apt-get install -y wget gnupg
-      wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
-      echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
-      apt-get update
-      apt-get install -y google-chrome-stable
-      CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE)
-      wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip
-      unzip /tmp/chromedriver.zip -d /usr/bin/
-      chmod +x /usr/bin/chromedriver
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
-      - key: GOOGLE_CHROME_BIN
-        value: /usr/bin/google-chrome
-      - key: CHROMEDRIVER_PATH
-        value: /usr/bin/chromedriver
-      - key: RENDER
-        value: 'true'
+      - key: PYTHON_VERSION
+        value: 3.9.16
