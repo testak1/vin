@@ -1,82 +1,121 @@
-from flask import Flask, request, jsonify
+import requests
+from flask import Flask, render_template, request
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium_stealth import stealth
-import os
 import time
-import logging
+import random
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
 
-def setup_driver():
-    chrome_options = Options()
-    
-    # Essential options for Render
-    chrome_options.binary_location = "/opt/render/project/.render/chrome/opt/google/chrome/google-chrome"
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    
-    # Browser mimic settings
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
-    chrome_options.add_argument(f"user-agent={user_agent}")
+# EU-Based VIN Decoders
+DECODERS = {
+    'Audi': {
+        'url': 'https://vag-codes.info/vin-decoder/audi',
+        'method': 'post',
+        'params': {'vin': ''},
+        'parse': lambda soup: {
+            'Model': soup.find('th', text='Model').find_next('td').text.strip(),
+            'Year': soup.find('th', text='Year').find_next('td').text.strip(),
+            'Engine': soup.find('th', text='Engine').find_next('td').text.strip()
+        }
+    },
+    'BMW': {
+        'url': 'https://bimmer.work/',
+        'method': 'get',
+        'params': {'vin': ''},
+        'parse': lambda soup: {
+            'Model': soup.select_one('.vehicle-model').text.strip(),
+            'Production Date': soup.select_one('.production-date').text.strip(),
+            'Options': [opt.text.strip() for opt in soup.select('.option-code')]
+        }
+    },
+    'Mercedes': {
+        'url': 'https://www.mercedes-benz.de/passengercars/mercedes-benz-cars/vin-decoder.html',
+        'method': 'post',
+        'params': {'identifier': ''},
+        'parse': lambda soup: {
+            'Model': soup.find('div', class_='model-name').text.strip(),
+            'VIN Data': {dt.text.strip(): dd.text.strip() 
+                        for dt, dd in zip(
+                            soup.select('dl.data-table dt'),
+                            soup.select('dl.data-table dd')
+                        )}
+        }
+    },
+    'Volkswagen': {
+        'url': 'https://vag-codes.info/vin-decoder/vw',
+        'method': 'post',
+        'params': {'vin': ''},
+        'parse': lambda soup: {
+            'Model': soup.find('th', text='Model').find_next('td').text.strip(),
+            'Engine Code': soup.find('th', text='Engine Code').find_next('td').text.strip()
+        }
+    },
+    'Volvo': {
+        'url': 'https://www.volvocars.com/eu/own/owner-info/vin-decoder',
+        'method': 'post',
+        'params': {'vin': ''},
+        'parse': lambda soup: {
+            'Vehicle Details': soup.select_one('.vehicle-details').text.strip(),
+            'Specifications': [li.text.strip() for li in soup.select('.specs-list li')]
+        }
+    }
+}
+
+def scrape_vin(manufacturer, vin):
+    decoder = DECODERS[manufacturer]
+    headers = {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept-Language': 'en-US,en;q=0.9'
+    }
     
     try:
-        service = Service(executable_path="/opt/render/project/.render/chromedriver/linux64/114.0.5735.90/chromedriver")
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        if decoder['method'] == 'post':
+            response = requests.post(
+                decoder['url'],
+                data={**decoder['params'], 'vin': vin},
+                headers=headers,
+                timeout=20
+            )
+        else:
+            response = requests.get(
+                decoder['url'],
+                params={**decoder['params'], 'vin': vin},
+                headers=headers,
+                timeout=20
+            )
         
-        stealth(driver,
-                languages=["en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True)
-        return driver
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            return {
+                'success': True,
+                'data': decoder['parse'](soup),
+                'source': decoder['url']
+            }
+        else:
+            return {
+                'success': False,
+                'error': f"HTTP {response.status_code}",
+                'source': decoder['url']
+            }
+            
     except Exception as e:
-        logging.error(f"Driver setup failed: {e}")
-        raise
+        return {
+            'success': False,
+            'error': str(e),
+            'source': decoder['url']
+        }
 
-@app.route('/decode', methods=['GET'])
-def decode_vin():
-    vin = request.args.get('vin')
-    if not vin:
-        return jsonify({"error": "VIN parameter is required"}), 400
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    results = {}
+    if request.method == 'POST':
+        vin = request.form['vin'].strip()
+        if len(vin) == 17:
+            for manufacturer in DECODERS:
+                results[manufacturer] = scrape_vin(manufacturer, vin)
+                time.sleep(random.uniform(1, 3))  # Be polite
     
-    driver = None
-    try:
-        driver = setup_driver()
-        url = f"https://www.vindecoderz.com/EN/check-lookup/{vin}"
-        driver.get(url)
-        time.sleep(5)  # Wait for Cloudflare
-        
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        table = soup.find('table', {'class': 'table table-striped table-hover'})
-        
-        if not table:
-            return jsonify({"error": "Equipment table not found"}), 404
-        
-        equipment = []
-        for row in table.find_all('tr'):
-            cols = row.find_all('td')
-            if len(cols) >= 2:
-                equipment.append({
-                    "code": cols[0].get_text(strip=True),
-                    "description": cols[1].get_text(strip=True)
-                })
-        
-        return jsonify(equipment)
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if driver:
-            driver.quit()
+    return render_template('index.html', results=results)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 10000)))
+    app.run()
