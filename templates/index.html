@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EU VIN Decoder</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .form-container { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .result-card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .success { border-left: 5px solid #4CAF50; }
+        .error { border-left: 5px solid #F44336; }
+        .manufacturer { font-weight: bold; color: #333; }
+        .source { font-size: 0.8em; color: #666; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>EU Vehicle VIN Decoder</h1>
+    
+    <div class="form-container">
+        <form method="POST">
+            <label for="vin"><b>Enter VIN (17 characters):</b></label><br>
+            <input type="text" id="vin" name="vin" required minlength="17" maxlength="17" 
+                   placeholder="e.g. WAUZZZ8T6BA000000" style="width: 300px; padding: 8px;">
+            <button type="submit" style="padding: 8px 15px;">Decode</button>
+        </form>
+    </div>
+
+    {% if results %}
+    <div class="results-container">
+        <h2>Decoding Results</h2>
+        {% for manufacturer, result in results.items() %}
+        <div class="result-card {% if result.success %}success{% else %}error{% endif %}">
+            <div class="manufacturer">{{ manufacturer }}</div>
+            <div class="source">Source: <a href="{{ result.source }}" target="_blank">{{ result.source }}</a></div>
+            
+            {% if result.success %}
+                {% if result.data is mapping %}
+                <table>
+                    {% for key, value in result.data.items() %}
+                    <tr>
+                        <th>{{ key }}</th>
+                        <td>
+                            {% if value is iterable and value is not string %}
+                                <ul>
+                                    {% for item in value %}
+                                    <li>{{ item }}</li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% else %}
+                <pre>{{ result.data }}</pre>
+                {% endif %}
+            {% else %}
+                <p class="error">Error: {{ result.error }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</body>
+</html>
